@@ -63,8 +63,26 @@ addon.defaults = {
     lootMonitorShowMoney = true,
     lootMonitorShowCurrency = true,
     lootMonitorShowReputation = true,
-    lootMonitorFadeTime = 10,
     lootMonitorMaxEntries = 8,
+    
+    -- Loot Monitor Duration by Quality (seconds)
+    lootMonitorDurationPoor = 3,
+    lootMonitorDurationCommon = 5,
+    lootMonitorDurationUncommon = 10,
+    lootMonitorDurationRare = 15,
+    lootMonitorDurationEpic = 20,
+    lootMonitorDurationLegendary = 40,
+    lootMonitorDurationArtifact = 15,
+    lootMonitorDurationHeirloom = 15,
+    
+    -- Loot Monitor Duration by Type (seconds)
+    lootMonitorDurationGold = 3,
+    lootMonitorDurationReputation = 15,
+    lootMonitorDurationCurrency = 15,
+    
+    -- Loot Monitor Display Options
+    lootMonitorShowCopperSilver = true, -- Show low-value money pickups
+    lootMonitorShowHonor = true, -- Show honor currency
 }
 
 -- Initialize saved variables

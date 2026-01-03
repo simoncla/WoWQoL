@@ -76,6 +76,20 @@ local CONFIG_LAYOUT = {
             { key = "lootMonitorShowMoney", label = "Show Money", desc = "Display gold/silver/copper gains" },
             { key = "lootMonitorShowCurrency", label = "Show Currency", desc = "Display Honor, Badges, and other currency gains" },
             { key = "lootMonitorShowReputation", label = "Show Reputation", desc = "Display reputation gains with progress" },
+            { key = "lootMonitorShowCopperSilver", label = "Display Copper/Silver", desc = "Show small money pickups" },
+            { key = "lootMonitorShowHonor", label = "Show Honor", desc = "Display honor currency gains" },
+            { type = "button", label = "Unlock Position", desc = "Click to unlock and reposition the loot monitor", action = "unlockLootMonitor" },
+            { type = "header", label = "Display Duration (seconds)" },
+            { type = "number", key = "lootMonitorDurationPoor", label = "Poor", color = "9d9d9d" },
+            { type = "number", key = "lootMonitorDurationCommon", label = "Common", color = "ffffff" },
+            { type = "number", key = "lootMonitorDurationUncommon", label = "Uncommon", color = "1eff00" },
+            { type = "number", key = "lootMonitorDurationRare", label = "Rare", color = "0070dd" },
+            { type = "number", key = "lootMonitorDurationEpic", label = "Epic", color = "a335ee" },
+            { type = "number", key = "lootMonitorDurationLegendary", label = "Legendary", color = "ff8000" },
+            { type = "number", key = "lootMonitorDurationArtifact", label = "Artifact/Currency", color = "e6cc80" },
+            { type = "number", key = "lootMonitorDurationHeirloom", label = "Heirloom/Quest", color = "00ccff" },
+            { type = "number", key = "lootMonitorDurationGold", label = "Gold", color = "ffd700" },
+            { type = "number", key = "lootMonitorDurationReputation", label = "Reputation", color = "00ff00" },
         }
     },
 }
@@ -271,9 +285,77 @@ function Config:ShowCategory(categoryIndex)
     yOffset = yOffset - 30
     
     for _, option in ipairs(category.options) do
-        local checkbox = CreateCheckbox(frame.scrollChild, option, yOffset)
-        table.insert(frame.optionCheckboxes, checkbox)
-        yOffset = yOffset - 50
+        if option.type == "button" then
+            -- Create a button instead of checkbox
+            local btn = CreateFrame("Button", nil, frame.scrollChild, "UIPanelButtonTemplate")
+            btn:SetSize(150, 25)
+            btn:SetPoint("TOPLEFT", 10, yOffset)
+            btn:SetText(option.label)
+            
+            -- Description
+            local desc = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            desc:SetPoint("LEFT", btn, "RIGHT", 10, 0)
+            desc:SetText("|cff888888" .. option.desc .. "|r")
+            btn.desc = desc
+            
+            btn:SetScript("OnClick", function()
+                if option.action == "unlockLootMonitor" then
+                    local LootMonitor = addon:GetModule("LootMonitor")
+                    if LootMonitor then
+                        LootMonitor:ToggleMover(true)
+                        -- Close config to see the mover
+                        QoLToolkitConfigFrame:Hide()
+                    end
+                end
+            end)
+            
+            table.insert(frame.optionCheckboxes, btn)
+            yOffset = yOffset - 35
+        elseif option.type == "header" then
+            -- Create a section header
+            local header = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            header:SetPoint("TOPLEFT", 10, yOffset)
+            header:SetText("|cffffd700" .. option.label .. "|r")
+            table.insert(frame.optionCheckboxes, header)
+            yOffset = yOffset - 25
+        elseif option.type == "number" then
+            -- Create a number input row with colored label
+            local container = CreateFrame("Frame", nil, frame.scrollChild)
+            container:SetSize(180, 25)
+            container:SetPoint("TOPLEFT", 10, yOffset)
+            
+            -- Colored label
+            local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            label:SetPoint("LEFT", 0, 0)
+            local labelColor = option.color or "ffffff"
+            label:SetText("|cff" .. labelColor .. option.label .. "|r")
+            
+            -- Input box
+            local editBox = CreateFrame("EditBox", nil, container, "InputBoxTemplate")
+            editBox:SetSize(50, 20)
+            editBox:SetPoint("LEFT", label, "RIGHT", 10, 0)
+            editBox:SetAutoFocus(false)
+            editBox:SetNumeric(true)
+            editBox:SetMaxLetters(4)
+            editBox:SetText(tostring(addon.db[option.key] or 10))
+            
+            editBox:SetScript("OnEnterPressed", function(self)
+                local value = tonumber(self:GetText()) or 10
+                addon.db[option.key] = value
+                self:ClearFocus()
+            end)
+            editBox:SetScript("OnEscapePressed", function(self)
+                self:SetText(tostring(addon.db[option.key] or 10))
+                self:ClearFocus()
+            end)
+            
+            table.insert(frame.optionCheckboxes, container)
+            yOffset = yOffset - 28
+        else
+            local checkbox = CreateCheckbox(frame.scrollChild, option, yOffset)
+            table.insert(frame.optionCheckboxes, checkbox)
+            yOffset = yOffset - 50
+        end
     end
     
     -- Update scroll child height

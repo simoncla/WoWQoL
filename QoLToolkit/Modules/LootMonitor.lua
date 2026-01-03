@@ -21,6 +21,34 @@ local ICON_SIZE = 40
 local FRAME_WIDTH = 350
 local MAX_VISIBLE_ENTRIES = 8
 
+-- Quality to setting key mapping
+local QUALITY_DURATION_KEYS = {
+    [0] = "lootMonitorDurationPoor",
+    [1] = "lootMonitorDurationCommon",
+    [2] = "lootMonitorDurationUncommon",
+    [3] = "lootMonitorDurationRare",
+    [4] = "lootMonitorDurationEpic",
+    [5] = "lootMonitorDurationLegendary",
+    [6] = "lootMonitorDurationArtifact",
+    [7] = "lootMonitorDurationHeirloom",
+    [8] = "lootMonitorDurationHeirloom", -- Quest items use heirloom timing
+}
+
+-- Get duration for an entry based on type and quality
+local function GetEntryDuration(entryType, quality)
+    if entryType == "item" then
+        local key = QUALITY_DURATION_KEYS[quality or 1]
+        return addon.db[key] or 10
+    elseif entryType == "money" then
+        return addon.db.lootMonitorDurationGold or 3
+    elseif entryType == "reputation" then
+        return addon.db.lootMonitorDurationReputation or 15
+    elseif entryType == "currency" then
+        return addon.db.lootMonitorDurationCurrency or 15
+    end
+    return 10 -- Default fallback
+end
+
 -- Tracked currencies (we'll track changes between updates)
 local previousCurrencies = {}
 
@@ -82,6 +110,7 @@ local function CreateEntryRow(parent)
     row.createdTime = 0
     row.entryType = nil
     row.itemLink = nil
+    row.itemQuality = nil
     
     return row
 end
@@ -173,8 +202,8 @@ local function AddEntry(entryType, data)
     if entryType == "currency" and not addon.db.lootMonitorShowCurrency then return end
     if entryType == "reputation" and not addon.db.lootMonitorShowReputation then return end
     
-    local scrollChild = mainFrame.scrollChild
-    local row = AcquireEntryRow(scrollChild)
+    
+    local row = AcquireEntryRow(mainFrame)
     
     row.createdTime = GetTime()
     row.entryType = entryType
@@ -185,6 +214,7 @@ local function AddEntry(entryType, data)
         if itemName then
             row.icon:SetTexture(itemIcon)
             row.itemLink = itemLink
+            row.itemQuality = itemQuality
             
             local qualityColor = QUALITY_COLORS[itemQuality] or "ffffff"
             local quantityStr = data.quantity > 1 and (data.quantity .. "x ") or ""
@@ -218,6 +248,7 @@ local function AddEntry(entryType, data)
                     if name2 then
                         row.icon:SetTexture(icon2)
                         row.itemLink = link2
+                        row.itemQuality = quality2
                         local qColor = QUALITY_COLORS[quality2] or "ffffff"
                         local qStr = data.quantity > 1 and (data.quantity .. "x ") or ""
                         row.text:SetText(qStr .. "|cff" .. qColor .. name2 .. "|r")
@@ -298,51 +329,35 @@ local function AddEntry(entryType, data)
     
     -- Reposition all entries
     LootMonitor:RepositionEntries()
-    
-    -- Show frame if hidden
-    if not mainFrame:IsShown() then
-        mainFrame:Show()
-    end
 end
 
 -- Reposition all entries
 function LootMonitor:RepositionEntries()
-    local yOffset = -5
+    local yOffset = 0
     for i, row in ipairs(entries) do
         row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", mainFrame.scrollChild, "TOPLEFT", 5, yOffset)
-        row:SetPoint("TOPRIGHT", mainFrame.scrollChild, "TOPRIGHT", -5, yOffset)
+        row:SetPoint("TOPRIGHT", mainFrame, "TOPRIGHT", 0, yOffset)
         yOffset = yOffset - ENTRY_HEIGHT - 5
     end
-    
-    -- Update scroll child height
-    local totalHeight = #entries * (ENTRY_HEIGHT + 5) + 10
-    mainFrame.scrollChild:SetHeight(math.max(totalHeight, 1))
 end
 
--- Parse loot message
+-- Parse loot message - extract item link directly
 local function ParseLootMessage(msg)
-    -- Pattern: You receive loot: [Item Link]x5. or You receive loot: [Item Link].
-    local itemLink, quantity = msg:match("You receive loot: (.+)x(%d+)%.")
+    -- Look for item links in the message: |cff......|Hitem:...|h[...]|h|r
+    -- Match item link pattern
+    local itemLink = msg:match("(|c%x+|Hitem:[^|]+|h%[.-%]|h|r)")
+    
     if not itemLink then
-        itemLink = msg:match("You receive loot: (.+)%.")
-        quantity = 1
+        -- Try alternative format without color
+        itemLink = msg:match("(|Hitem:[^|]+|h%[.-%]|h)")
     end
     
-    -- Also match "You receive item: [Item Link]"
     if not itemLink then
-        itemLink, quantity = msg:match("You receive item: (.+)x(%d+)")
-        if not itemLink then
-            itemLink = msg:match("You receive item: (.+)")
-            quantity = 1
-        end
+        return nil, 1
     end
     
-    -- Quest reward pattern
-    if not itemLink then
-        itemLink = msg:match("Received (.+)%.")
-        quantity = 1
-    end
+    -- Check for quantity (e.g., x5 or x20 after the link)
+    local quantity = msg:match("|h|rx(%d+)") or msg:match("|rx(%d+)")
     
     return itemLink, tonumber(quantity) or 1
 end
@@ -356,21 +371,30 @@ local function ParseMoneyMessage(msg)
     return (gold * 10000) + (silver * 100) + copper
 end
 
--- Update fade for entries
-local function UpdateEntryFade()
-    local fadeTime = addon.db.lootMonitorFadeTime or 10
+-- Fade duration constant
+local FADE_DURATION = 1.0 -- 1 second smooth fade
+
+-- Update fade for entries (called frequently for smooth animation)
+local function UpdateEntryFade(elapsed)
     local currentTime = GetTime()
+    local needsReposition = false
     
     for i = #entries, 1, -1 do
         local row = entries[i]
         local age = currentTime - row.createdTime
         
-        if age > fadeTime then
+        -- Get duration based on entry type and quality
+        local displayDuration = GetEntryDuration(row.entryType, row.itemQuality)
+        
+        if age > displayDuration then
             -- Start fading
-            local fadeAlpha = 1 - ((age - fadeTime) / 3) -- 3 second fade
+            local fadeProgress = (age - displayDuration) / FADE_DURATION
+            local fadeAlpha = 1 - fadeProgress
+            
             if fadeAlpha <= 0 then
                 table.remove(entries, i)
                 ReleaseEntryRow(row)
+                needsReposition = true
             else
                 row:SetAlpha(fadeAlpha)
             end
@@ -379,79 +403,52 @@ local function UpdateEntryFade()
         end
     end
     
-    -- Hide frame if no entries
-    if #entries == 0 and mainFrame:IsShown() then
-        mainFrame:Hide()
+    if needsReposition then
+        LootMonitor:RepositionEntries()
     end
-    
-    LootMonitor:RepositionEntries()
 end
 
--- Create main frame
+-- Create main frame (invisible anchor for entries)
 local function CreateMainFrame()
-    local frame = CreateFrame("Frame", "QoLToolkitLootMonitor", UIParent, "BackdropTemplate")
-    frame:SetSize(FRAME_WIDTH, 300)
+    local frame = CreateFrame("Frame", "QoLToolkitLootMonitor", UIParent)
+    frame:SetSize(FRAME_WIDTH, 500)
     frame:SetPoint("RIGHT", UIParent, "RIGHT", -50, 0)
-    frame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
-    frame:SetBackdropColor(0, 0, 0, 0.4)
-    frame:SetBackdropBorderColor(0.2, 0.2, 0.2, 0.8)
     frame:SetClampedToScreen(true)
     frame:SetMovable(true)
-    frame:EnableMouse(true)
-    frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", frame.StartMoving)
-    frame:SetScript("OnDragStop", function(self)
-        self:StopMovingOrSizing()
-        -- Save position
-        local point, _, relPoint, x, y = self:GetPoint()
+    frame:EnableMouse(false) -- Don't block mouse when not over entries
+    
+    -- Create mover anchor frame (visible when unlocked)
+    local mover = CreateFrame("Frame", "QoLToolkitLootMonitorMover", frame, "BackdropTemplate")
+    mover:SetSize(FRAME_WIDTH, 60)
+    mover:SetPoint("TOP", frame, "TOP", 0, 0)
+    mover:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 2,
+    })
+    mover:SetBackdropColor(0.1, 0.4, 0.1, 0.8)
+    mover:SetBackdropBorderColor(0, 1, 0, 1)
+    mover:EnableMouse(true)
+    mover:RegisterForDrag("LeftButton")
+    mover:SetScript("OnDragStart", function() frame:StartMoving() end)
+    mover:SetScript("OnDragStop", function()
+        frame:StopMovingOrSizing()
+        local point, _, relPoint, x, y = frame:GetPoint()
         addon.db.lootMonitorPosition = { point = point, relPoint = relPoint, x = x, y = y }
     end)
     
-    -- Title bar
-    local titleBar = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-    titleBar:SetSize(FRAME_WIDTH, 20)
-    titleBar:SetPoint("TOPLEFT", 0, 0)
-    titleBar:SetPoint("TOPRIGHT", 0, 0)
-    titleBar:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-    })
-    titleBar:SetBackdropColor(0.1, 0.1, 0.1, 0.9)
+    -- Mover title text
+    local moverTitle = mover:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    moverTitle:SetPoint("CENTER", mover, "CENTER", 0, 10)
+    moverTitle:SetText("|cff00ff00Loot Monitor|r")
     
-    local titleText = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    titleText:SetPoint("LEFT", 8, 0)
-    titleText:SetText("|cff00ff00Loot Monitor|r")
+    -- Mover instructions
+    local moverInstructions = mover:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    moverInstructions:SetPoint("CENTER", mover, "CENTER", 0, -10)
+    moverInstructions:SetText("Drag to reposition | Type /lm lock to lock")
     
-    -- Close/minimize button (optional)
-    local closeBtn = CreateFrame("Button", nil, titleBar)
-    closeBtn:SetSize(16, 16)
-    closeBtn:SetPoint("RIGHT", -4, 0)
-    closeBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
-    closeBtn:SetPushedTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Down")
-    closeBtn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight")
-    closeBtn:SetScript("OnClick", function()
-        frame:Hide()
-        -- Clear entries
-        for i = #entries, 1, -1 do
-            ReleaseEntryRow(entries[i])
-            entries[i] = nil
-        end
-    end)
-    
-    -- Scroll frame
-    local scrollFrame = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", 5, -25)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -25, 5)
-    
-    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-    scrollChild:SetSize(FRAME_WIDTH - 30, 1)
-    scrollFrame:SetScrollChild(scrollChild)
-    
-    frame.scrollChild = scrollChild
-    frame.scrollFrame = scrollFrame
+    mover:Hide() -- Hidden by default
+    frame.mover = mover
     
     -- Restore saved position
     if addon.db.lootMonitorPosition then
@@ -460,9 +457,27 @@ local function CreateMainFrame()
         frame:SetPoint(pos.point, UIParent, pos.relPoint, pos.x, pos.y)
     end
     
-    frame:Hide() -- Start hidden, show when we have entries
+    frame:Show() -- Always shown, entries show/hide themselves
     
     return frame
+end
+
+-- Toggle mover visibility
+function LootMonitor:ToggleMover(unlock)
+    if not mainFrame then return end
+    
+    if unlock then
+        mainFrame.mover:Show()
+        addon:Print("Loot Monitor unlocked. Drag to reposition, then type |cff00ff00/lm lock|r to lock.")
+    else
+        mainFrame.mover:Hide()
+        addon:Print("Loot Monitor locked.")
+    end
+end
+
+-- Check if mover is shown
+function LootMonitor:IsMoverShown()
+    return mainFrame and mainFrame.mover and mainFrame.mover:IsShown()
 end
 
 -- Event handlers
@@ -470,10 +485,24 @@ local eventFrame = CreateFrame("Frame")
 
 local function OnEvent(self, event, ...)
     if event == "CHAT_MSG_LOOT" then
-        local msg, _, _, _, playerName = ...
-        -- Only track our own loot
-        local myName = UnitName("player")
-        if playerName == myName or playerName == "" then
+        local msg, _, _, _, playerName, _, _, _, _, _, _, playerGUID = ...
+        
+        -- Check if this is our own loot
+        -- Method 1: Compare GUID
+        local isOurLoot = (playerGUID == UnitGUID("player"))
+        
+        -- Method 2: Check if message says "You receive" or "You loot"
+        if not isOurLoot then
+            isOurLoot = msg:match("^You ") ~= nil
+        end
+        
+        -- Method 3: Compare player name (with or without realm)
+        if not isOurLoot and playerName then
+            local myName = UnitName("player")
+            isOurLoot = (playerName == myName) or (playerName == "") or playerName:match("^" .. myName .. "%-")
+        end
+        
+        if isOurLoot then
             local itemLink, quantity = ParseLootMessage(msg)
             if itemLink then
                 AddEntry("item", { itemLink = itemLink, quantity = quantity })
@@ -542,8 +571,8 @@ function LootMonitor:OnInitialize()
     eventFrame:RegisterEvent("COMBAT_TEXT_UPDATE")
     eventFrame:SetScript("OnEvent", OnEvent)
     
-    -- Start fade timer
-    C_Timer.NewTicker(0.5, UpdateEntryFade)
+    -- Start fade timer (faster tick for smooth animation)
+    C_Timer.NewTicker(0.03, UpdateEntryFade) -- ~30fps for smooth fading
     
     -- Slash command for testing
     SLASH_LOOTMONITORTEST1 = "/lmtest"
@@ -552,7 +581,31 @@ function LootMonitor:OnInitialize()
         AddEntry("reputation", { factionName = "Iskaara Tuskarr", amount = 80, current = 80, max = 3000 })
         AddEntry("currency", { currencyID = 1792, quantity = 500 }) -- Honor
         AddEntry("money", { amount = 2000000 }) -- 200g
+        -- Test item using Hearthstone (common item everyone has info for)
+        AddEntry("item", { itemLink = "|cffffffff|Hitem:6948::::::::70:::::|h[Hearthstone]|h|r", quantity = 1 })
         addon:Print("Added test entries to Loot Monitor")
+    end
+    
+    -- Slash command for lock/unlock
+    SLASH_LOOTMONITOR1 = "/lm"
+    SLASH_LOOTMONITOR2 = "/lootmonitor"
+    SlashCmdList["LOOTMONITOR"] = function(msg)
+        local cmd = msg:lower():trim()
+        if cmd == "unlock" or cmd == "move" then
+            LootMonitor:ToggleMover(true)
+        elseif cmd == "lock" then
+            LootMonitor:ToggleMover(false)
+        elseif cmd == "toggle" or cmd == "" then
+            LootMonitor:ToggleMover(not LootMonitor:IsMoverShown())
+        elseif cmd == "test" then
+            SlashCmdList["LOOTMONITORTEST"]("")
+        else
+            addon:Print("Loot Monitor commands:")
+            addon:Print("  /lm unlock - Unlock to reposition")
+            addon:Print("  /lm lock - Lock position")
+            addon:Print("  /lm toggle - Toggle lock state")
+            addon:Print("  /lm test - Add test entries")
+        end
     end
 end
 
