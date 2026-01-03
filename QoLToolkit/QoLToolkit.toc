@@ -1,0 +1,23 @@
+## Interface: 110100, 110105
+## Title: QoL Toolkit
+## Notes: A collection of quality of life improvements for World of Warcraft
+## Author: Your Name
+## Version: 1.0.0
+## SavedVariables: QoLToolkitDB
+## IconTexture: Interface\Icons\INV_Misc_Gear_01
+
+# Core files
+Core.lua
+
+# Modules
+Modules\AutoRepair.lua
+Modules\AutoSellJunk.lua
+Modules\EnhancedTooltips.lua
+Modules\AutoAccept.lua
+Modules\ChatImprovements.lua
+Modules\FastLoot.lua
+Modules\QuestHelper.lua
+Modules\AutoScreenshot.lua
+Modules\CombatIndicator.lua
+Modules\LootMonitor.lua
+Modules\Config.lua
