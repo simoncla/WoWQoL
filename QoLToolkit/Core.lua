@@ -83,6 +83,9 @@ addon.defaults = {
     -- Loot Monitor Display Options
     lootMonitorShowCopperSilver = true, -- Show low-value money pickups
     lootMonitorShowHonor = true, -- Show honor currency
+    lootMonitorShowAHPrice = true, -- Show auction house price from Auctionator/TSM
+    lootMonitorFadeSlide = "right", -- Slide direction when fading: "none", "left", "right"
+    lootMonitorFadeDuration = 0.5, -- Fade/slide duration in seconds (0.1 to 2.0)
 }
 
 -- Initialize saved variables

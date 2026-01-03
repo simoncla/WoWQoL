@@ -122,6 +122,8 @@ local function AcquireEntryRow(parent)
         row = CreateEntryRow(parent)
     end
     row:SetParent(parent)
+    row:SetAlpha(1) -- Reset alpha
+    row.fadeOffset = 0 -- Reset slide offset
     row:Show()
     return row
 end
@@ -131,6 +133,7 @@ local function ReleaseEntryRow(row)
     row:Hide()
     row:SetParent(nil)
     row.itemLink = nil
+    row.fadeOffset = 0 -- Reset slide offset
     table.insert(entryPool, row)
 end
 
@@ -159,6 +162,64 @@ local function FormatMoneyCompact(copper)
     local copperRemain = copper % 100
     
     return string.format("|cffffd700%dg|r |cffc0c0c0%ds|r |cffeda55f%dc|r", gold, silver, copperRemain)
+end
+
+-- Format compact money (short version for AH price)
+local function FormatMoneyShort(copper)
+    if not copper or copper <= 0 then return nil end
+    
+    local gold = floor(copper / 10000)
+    local silver = floor((copper % 10000) / 100)
+    
+    if gold >= 1000 then
+        return string.format("|cffffd700%.1fk|r", gold / 1000)
+    elseif gold > 0 then
+        return string.format("|cffffd700%dg|r", gold)
+    elseif silver > 0 then
+        return string.format("|cffc0c0c0%ds|r", silver)
+    else
+        return string.format("|cffeda55f%dc|r", copper)
+    end
+end
+
+-- Get item ID from item link
+local function GetItemIDFromLink(itemLink)
+    if not itemLink then return nil end
+    local itemID = itemLink:match("item:(%d+)")
+    return tonumber(itemID)
+end
+
+-- Get auction house price from supported addons (Auctionator, TSM)
+local function GetAuctionPrice(itemLink)
+    if not itemLink then return nil end
+    
+    local itemID = GetItemIDFromLink(itemLink)
+    if not itemID then return nil end
+    
+    -- Try Auctionator first
+    if Auctionator and Auctionator.API and Auctionator.API.v1 and Auctionator.API.v1.GetAuctionPriceByItemID then
+        local success, price = pcall(Auctionator.API.v1.GetAuctionPriceByItemID, "QoLToolkit", itemID)
+        if success and price and price > 0 then
+            return price, "Auctionator"
+        end
+    end
+    
+    -- Try TSM
+    if TSM_API and TSM_API.GetCustomPriceValue then
+        -- TSM uses item strings like "i:12345"
+        local itemString = "i:" .. itemID
+        local success, price = pcall(TSM_API.GetCustomPriceValue, "DBMarket", itemString)
+        if success and price and price > 0 then
+            return price, "TSM"
+        end
+        -- Try region market value as fallback
+        success, price = pcall(TSM_API.GetCustomPriceValue, "DBRegionMarketAvg", itemString)
+        if success and price and price > 0 then
+            return price, "TSM"
+        end
+    end
+    
+    return nil, nil
 end
 
 -- Get item stats summary
@@ -233,13 +294,25 @@ local function AddEntry(entryType, data)
             
             row.subtext:SetText(table.concat(subParts, " "))
             
+            -- Build price display (vendor + AH)
+            local priceLines = {}
+            
             -- Vendor price
             if sellPrice and sellPrice > 0 then
-                local totalPrice = sellPrice * data.quantity
-                row.rightText:SetText(FormatMoneyCompact(totalPrice))
-            else
-                row.rightText:SetText("")
+                local totalVendor = sellPrice * data.quantity
+                table.insert(priceLines, FormatMoneyCompact(totalVendor))
             end
+            
+            -- Auction House price (from Auctionator or TSM)
+            if addon.db.lootMonitorShowAHPrice then
+                local ahPrice, ahSource = GetAuctionPrice(itemLink)
+                if ahPrice and ahPrice > 0 then
+                    local totalAH = ahPrice * data.quantity
+                    table.insert(priceLines, "|cff00ffff" .. FormatMoneyCompact(totalAH) .. "|r")
+                end
+            end
+            
+            row.rightText:SetText(table.concat(priceLines, "\n"))
         else
             -- Item info not cached, try again after a delay
             C_Timer.After(0.5, function()
@@ -259,9 +332,18 @@ local function AddEntry(entryType, data)
                         end
                         row.subtext:SetText(table.concat(sub, " "))
                         
+                        -- Build price display (vendor + AH)
+                        local priceLines = {}
                         if price2 and price2 > 0 then
-                            row.rightText:SetText(FormatMoneyCompact(price2 * data.quantity))
+                            table.insert(priceLines, FormatMoneyCompact(price2 * data.quantity))
                         end
+                        if addon.db.lootMonitorShowAHPrice then
+                            local ahPrice2 = GetAuctionPrice(link2)
+                            if ahPrice2 and ahPrice2 > 0 then
+                                table.insert(priceLines, "|cff00ffff" .. FormatMoneyCompact(ahPrice2 * data.quantity) .. "|r")
+                            end
+                        end
+                        row.rightText:SetText(table.concat(priceLines, "\n"))
                     end
                 end
             end)
@@ -336,7 +418,8 @@ function LootMonitor:RepositionEntries()
     local yOffset = 0
     for i, row in ipairs(entries) do
         row:ClearAllPoints()
-        row:SetPoint("TOPRIGHT", mainFrame, "TOPRIGHT", 0, yOffset)
+        local xOffset = row.fadeOffset or 0
+        row:SetPoint("TOPRIGHT", mainFrame, "TOPRIGHT", xOffset, yOffset)
         yOffset = yOffset - ENTRY_HEIGHT - 5
     end
 end
@@ -371,13 +454,14 @@ local function ParseMoneyMessage(msg)
     return (gold * 10000) + (silver * 100) + copper
 end
 
--- Fade duration constant
-local FADE_DURATION = 1.0 -- 1 second smooth fade
+-- Slide distance constant
+local SLIDE_DISTANCE = 100 -- Pixels to slide during fade
 
 -- Update fade for entries (called frequently for smooth animation)
 local function UpdateEntryFade(elapsed)
     local currentTime = GetTime()
     local needsReposition = false
+    local slideDirection = addon.db.lootMonitorFadeSlide or "right"
     
     for i = #entries, 1, -1 do
         local row = entries[i]
@@ -388,7 +472,8 @@ local function UpdateEntryFade(elapsed)
         
         if age > displayDuration then
             -- Start fading
-            local fadeProgress = (age - displayDuration) / FADE_DURATION
+            local fadeDuration = addon.db.lootMonitorFadeDuration or 0.5
+            local fadeProgress = (age - displayDuration) / fadeDuration
             local fadeAlpha = 1 - fadeProgress
             
             if fadeAlpha <= 0 then
@@ -397,9 +482,20 @@ local function UpdateEntryFade(elapsed)
                 needsReposition = true
             else
                 row:SetAlpha(fadeAlpha)
+                
+                -- Calculate slide offset
+                if slideDirection == "right" then
+                    row.fadeOffset = fadeProgress * SLIDE_DISTANCE
+                elseif slideDirection == "left" then
+                    row.fadeOffset = -(fadeProgress * SLIDE_DISTANCE)
+                else
+                    row.fadeOffset = 0
+                end
+                needsReposition = true
             end
         else
             row:SetAlpha(1)
+            row.fadeOffset = 0
         end
     end
     

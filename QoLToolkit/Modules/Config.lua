@@ -78,6 +78,9 @@ local CONFIG_LAYOUT = {
             { key = "lootMonitorShowReputation", label = "Show Reputation", desc = "Display reputation gains with progress" },
             { key = "lootMonitorShowCopperSilver", label = "Display Copper/Silver", desc = "Show small money pickups" },
             { key = "lootMonitorShowHonor", label = "Show Honor", desc = "Display honor currency gains" },
+            { key = "lootMonitorShowAHPrice", label = "Show AH Price", desc = "Display auction house price from Auctionator/TSM" },
+            { type = "dropdown", key = "lootMonitorFadeSlide", label = "Fade Slide Direction", options = { "none", "left", "right" }, desc = "Direction entries slide when fading" },
+            { type = "slider", key = "lootMonitorFadeDuration", label = "Fade Speed", min = 0.1, max = 2.0, step = 0.1, desc = "Duration of fade/slide animation (seconds)" },
             { type = "button", label = "Unlock Position", desc = "Click to unlock and reposition the loot monitor", action = "unlockLootMonitor" },
             { type = "header", label = "Display Duration (seconds)" },
             { type = "number", key = "lootMonitorDurationPoor", label = "Poor", color = "9d9d9d" },
@@ -351,6 +354,89 @@ function Config:ShowCategory(categoryIndex)
             
             table.insert(frame.optionCheckboxes, container)
             yOffset = yOffset - 28
+        elseif option.type == "dropdown" then
+            -- Create a dropdown-like button that cycles through options
+            local container = CreateFrame("Frame", nil, frame.scrollChild)
+            container:SetSize(300, 25)
+            container:SetPoint("TOPLEFT", 10, yOffset)
+            
+            -- Label
+            local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            label:SetPoint("LEFT", 0, 0)
+            label:SetText(option.label .. ":")
+            
+            -- Dropdown button
+            local dropBtn = CreateFrame("Button", nil, container, "UIPanelButtonTemplate")
+            dropBtn:SetSize(80, 22)
+            dropBtn:SetPoint("LEFT", label, "RIGHT", 10, 0)
+            
+            local currentValue = addon.db[option.key] or option.options[1]
+            dropBtn:SetText(currentValue)
+            
+            dropBtn:SetScript("OnClick", function(self)
+                -- Cycle to next option
+                local currentIdx = 1
+                for i, opt in ipairs(option.options) do
+                    if opt == addon.db[option.key] then
+                        currentIdx = i
+                        break
+                    end
+                end
+                local nextIdx = (currentIdx % #option.options) + 1
+                addon.db[option.key] = option.options[nextIdx]
+                self:SetText(addon.db[option.key])
+            end)
+            
+            -- Description
+            local desc = container:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            desc:SetPoint("LEFT", dropBtn, "RIGHT", 10, 0)
+            desc:SetText("|cff888888" .. (option.desc or "") .. "|r")
+            
+            table.insert(frame.optionCheckboxes, container)
+            yOffset = yOffset - 30
+        elseif option.type == "slider" then
+            -- Create a slider
+            local container = CreateFrame("Frame", nil, frame.scrollChild)
+            container:SetSize(380, 30)
+            container:SetPoint("TOPLEFT", 10, yOffset)
+            
+            -- Label
+            local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            label:SetPoint("LEFT", 0, 0)
+            label:SetText(option.label .. ":")
+            
+            -- Slider
+            local slider = CreateFrame("Slider", nil, container, "OptionsSliderTemplate")
+            slider:SetPoint("LEFT", label, "RIGHT", 10, 0)
+            slider:SetSize(120, 16)
+            slider:SetMinMaxValues(option.min or 0.1, option.max or 2.0)
+            slider:SetValueStep(option.step or 0.1)
+            slider:SetObeyStepOnDrag(true)
+            slider:SetValue(addon.db[option.key] or 0.5)
+            
+            -- Hide default text
+            slider.Low:SetText("")
+            slider.High:SetText("")
+            slider.Text:SetText("")
+            
+            -- Value display
+            local valueText = container:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            valueText:SetPoint("LEFT", slider, "RIGHT", 10, 0)
+            valueText:SetText(string.format("%.1fs", addon.db[option.key] or 0.5))
+            
+            slider:SetScript("OnValueChanged", function(self, value)
+                value = math.floor(value * 10 + 0.5) / 10 -- Round to 1 decimal
+                addon.db[option.key] = value
+                valueText:SetText(string.format("%.1fs", value))
+            end)
+            
+            -- Description
+            local desc = container:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            desc:SetPoint("LEFT", valueText, "RIGHT", 10, 0)
+            desc:SetText("|cff888888" .. (option.desc or "") .. "|r")
+            
+            table.insert(frame.optionCheckboxes, container)
+            yOffset = yOffset - 35
         else
             local checkbox = CreateCheckbox(frame.scrollChild, option, yOffset)
             table.insert(frame.optionCheckboxes, checkbox)
