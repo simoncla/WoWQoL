@@ -1,7 +1,7 @@
----@class QoLToolkit
+---@class LootMonitor
 local addonName, addon = ...
 
-local LootMonitor = {}
+local LootMonitorModule = {}
 
 -- Constants
 local QUALITY_COLORS = {
@@ -198,7 +198,7 @@ local function GetAuctionPrice(itemLink)
     
     -- Try Auctionator first
     if Auctionator and Auctionator.API and Auctionator.API.v1 and Auctionator.API.v1.GetAuctionPriceByItemID then
-        local success, price = pcall(Auctionator.API.v1.GetAuctionPriceByItemID, "QoLToolkit", itemID)
+        local success, price = pcall(Auctionator.API.v1.GetAuctionPriceByItemID, "LootMonitor", itemID)
         if success and price and price > 0 then
             return price, "Auctionator"
         end
@@ -410,11 +410,11 @@ local function AddEntry(entryType, data)
     end
     
     -- Reposition all entries
-    LootMonitor:RepositionEntries()
+    LootMonitorModule:RepositionEntries()
 end
 
 -- Reposition all entries
-function LootMonitor:RepositionEntries()
+function LootMonitorModule:RepositionEntries()
     local yOffset = 0
     for i, row in ipairs(entries) do
         row:ClearAllPoints()
@@ -500,13 +500,13 @@ local function UpdateEntryFade(elapsed)
     end
     
     if needsReposition then
-        LootMonitor:RepositionEntries()
+        LootMonitorModule:RepositionEntries()
     end
 end
 
 -- Create main frame (invisible anchor for entries)
 local function CreateMainFrame()
-    local frame = CreateFrame("Frame", "QoLToolkitLootMonitor", UIParent)
+    local frame = CreateFrame("Frame", "LootMonitorFrame", UIParent)
     frame:SetSize(FRAME_WIDTH, 500)
     frame:SetPoint("RIGHT", UIParent, "RIGHT", -50, 0)
     frame:SetClampedToScreen(true)
@@ -514,7 +514,7 @@ local function CreateMainFrame()
     frame:EnableMouse(false) -- Don't block mouse when not over entries
     
     -- Create mover anchor frame (visible when unlocked)
-    local mover = CreateFrame("Frame", "QoLToolkitLootMonitorMover", frame, "BackdropTemplate")
+    local mover = CreateFrame("Frame", "LootMonitorMover", frame, "BackdropTemplate")
     mover:SetSize(FRAME_WIDTH, 60)
     mover:SetPoint("TOP", frame, "TOP", 0, 0)
     mover:SetBackdrop({
@@ -559,7 +559,7 @@ local function CreateMainFrame()
 end
 
 -- Toggle mover visibility
-function LootMonitor:ToggleMover(unlock)
+function LootMonitorModule:ToggleMover(unlock)
     if not mainFrame then return end
     
     if unlock then
@@ -572,7 +572,7 @@ function LootMonitor:ToggleMover(unlock)
 end
 
 -- Check if mover is shown
-function LootMonitor:IsMoverShown()
+function LootMonitorModule:IsMoverShown()
     return mainFrame and mainFrame.mover and mainFrame.mover:IsShown()
 end
 
@@ -656,7 +656,7 @@ local function OnEvent(self, event, ...)
     end
 end
 
-function LootMonitor:OnInitialize()
+function LootMonitorModule:OnInitialize()
     -- Create the main frame
     mainFrame = CreateMainFrame()
     
@@ -688,15 +688,22 @@ function LootMonitor:OnInitialize()
     SlashCmdList["LOOTMONITOR"] = function(msg)
         local cmd = msg:lower():trim()
         if cmd == "unlock" or cmd == "move" then
-            LootMonitor:ToggleMover(true)
+            LootMonitorModule:ToggleMover(true)
         elseif cmd == "lock" then
-            LootMonitor:ToggleMover(false)
+            LootMonitorModule:ToggleMover(false)
         elseif cmd == "toggle" or cmd == "" then
-            LootMonitor:ToggleMover(not LootMonitor:IsMoverShown())
+            -- Open config if available, otherwise toggle mover
+            local ConfigModule = addon:GetModule("Config")
+            if ConfigModule then
+                ConfigModule:Toggle()
+            else
+                LootMonitorModule:ToggleMover(not LootMonitorModule:IsMoverShown())
+            end
         elseif cmd == "test" then
             SlashCmdList["LOOTMONITORTEST"]("")
         else
             addon:Print("Loot Monitor commands:")
+            addon:Print("  /lm - Open configuration")
             addon:Print("  /lm unlock - Unlock to reposition")
             addon:Print("  /lm lock - Lock position")
             addon:Print("  /lm toggle - Toggle lock state")
@@ -706,4 +713,4 @@ function LootMonitor:OnInitialize()
 end
 
 -- Register the module
-addon:RegisterModule("LootMonitor", LootMonitor)
+addon:RegisterModule("LootMonitor", LootMonitorModule)

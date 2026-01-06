@@ -19,5 +19,4 @@ Modules\FastLoot.lua
 Modules\QuestHelper.lua
 Modules\AutoScreenshot.lua
 Modules\CombatIndicator.lua
-Modules\LootMonitor.lua
 Modules\Config.lua

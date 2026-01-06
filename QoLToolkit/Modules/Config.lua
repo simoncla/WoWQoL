@@ -67,34 +67,6 @@ local CONFIG_LAYOUT = {
             { key = "screenshotMythicPlus", label = "M+ Screenshots", desc = "Screenshot on M+ completion" },
         }
     },
-    {
-        name = "Loot Monitor",
-        icon = "Interface\\Icons\\INV_Misc_Bag_10_Green",
-        options = {
-            { key = "lootMonitorEnabled", label = "Enable Loot Monitor", desc = "Show visual feed of looted items and gains" },
-            { key = "lootMonitorShowItems", label = "Show Items", desc = "Display looted items with icons and prices" },
-            { key = "lootMonitorShowMoney", label = "Show Money", desc = "Display gold/silver/copper gains" },
-            { key = "lootMonitorShowCurrency", label = "Show Currency", desc = "Display Honor, Badges, and other currency gains" },
-            { key = "lootMonitorShowReputation", label = "Show Reputation", desc = "Display reputation gains with progress" },
-            { key = "lootMonitorShowCopperSilver", label = "Display Copper/Silver", desc = "Show small money pickups" },
-            { key = "lootMonitorShowHonor", label = "Show Honor", desc = "Display honor currency gains" },
-            { key = "lootMonitorShowAHPrice", label = "Show AH Price", desc = "Display auction house price from Auctionator/TSM" },
-            { type = "dropdown", key = "lootMonitorFadeSlide", label = "Fade Slide Direction", options = { "none", "left", "right" }, desc = "Direction entries slide when fading" },
-            { type = "slider", key = "lootMonitorFadeDuration", label = "Fade Speed", min = 0.1, max = 2.0, step = 0.1, desc = "Duration of fade/slide animation (seconds)" },
-            { type = "button", label = "Unlock Position", desc = "Click to unlock and reposition the loot monitor", action = "unlockLootMonitor" },
-            { type = "header", label = "Display Duration (seconds)" },
-            { type = "number", key = "lootMonitorDurationPoor", label = "Poor", color = "9d9d9d" },
-            { type = "number", key = "lootMonitorDurationCommon", label = "Common", color = "ffffff" },
-            { type = "number", key = "lootMonitorDurationUncommon", label = "Uncommon", color = "1eff00" },
-            { type = "number", key = "lootMonitorDurationRare", label = "Rare", color = "0070dd" },
-            { type = "number", key = "lootMonitorDurationEpic", label = "Epic", color = "a335ee" },
-            { type = "number", key = "lootMonitorDurationLegendary", label = "Legendary", color = "ff8000" },
-            { type = "number", key = "lootMonitorDurationArtifact", label = "Artifact/Currency", color = "e6cc80" },
-            { type = "number", key = "lootMonitorDurationHeirloom", label = "Heirloom/Quest", color = "00ccff" },
-            { type = "number", key = "lootMonitorDurationGold", label = "Gold", color = "ffd700" },
-            { type = "number", key = "lootMonitorDurationReputation", label = "Reputation", color = "00ff00" },
-        }
-    },
 }
 
 -- Create the main config frame
